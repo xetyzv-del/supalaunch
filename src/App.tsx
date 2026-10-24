@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { BookOpen, Calendar, Layers, Radio, Shield } from 'lucide-react';
 import { AdminDashboard } from './components/AdminDashboard';
 import { AdminStudioModal, type AdminTab } from './components/AdminStudioModal';
@@ -18,8 +18,8 @@ import { SyllabusTracker } from './components/SyllabusTracker';
 import { TimetableSection } from './components/TimetableSection';
 import { useAuth } from './hooks/useAuth';
 import { getRepo } from './lib/db';
-import type { DocumentOpenPayload } from './lib/db/repo';
 import { isSupabaseConfigured } from './lib/supabase';
+import type { DocumentOpenPayload } from './lib/db/repo';
 import type {
   BroadcastClass,
   MainsQuestion,
@@ -33,9 +33,28 @@ import type {
   UserProfileData,
 } from './types';
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs = 12000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(
+      () => reject(new Error('Supabase request timed out. Check the project URL, DNS, and network connection, then retry.')),
+      timeoutMs
+    );
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
 export function App() {
   const auth = useAuth();
-  const repo = useMemo(() => getRepo(auth.sandboxActive), [auth.sandboxActive]);
+  const repo = getRepo();
 
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('crux');
   const [classroomMode, setClassroomMode] = useState<'stage' | 'schedule'>('stage');
@@ -69,16 +88,16 @@ export function App() {
     if (!auth.user) return;
     setLoadError(null);
     try {
-      const prof = await repo.getProfile({
+      const prof = await withTimeout(repo.getProfile({
         id: auth.user.id,
         email: auth.user.email,
         displayName: auth.user.displayName,
         photoURL: auth.user.photoURL,
-      });
+      }));
       setProfile(prof);
       const staff = prof.role === 'admin' || prof.role === 'mentor';
 
-      const [tList, bList, qList, aList, mqList, subList, rList, sylList] = await Promise.all([
+      const [tList, bList, qList, aList, mqList, subList, rList, sylList] = await withTimeout(Promise.all([
         repo.listTopicsOfDay(),
         repo.listBroadcasts(),
         repo.listQuizzes(staff),
@@ -87,7 +106,7 @@ export function App() {
         repo.listSubmissions(prof.uid),
         repo.listResources(prof.uid, staff),
         repo.loadSyllabus(prof.uid),
-      ]);
+      ]));
 
       setTopics(tList);
       setBroadcasts(bList);
@@ -101,6 +120,7 @@ export function App() {
       setResources(rList);
       setSyllabus(sylList);
     } catch (err) {
+      setProfile(null);
       setLoadError(err instanceof Error ? err.message : 'Unable to load workspace data.');
     } finally {
       setHydrating(false);
@@ -146,15 +166,49 @@ export function App() {
         onMagicLink={auth.sendMagicLink}
         onGoogleSignIn={auth.signInWithGoogle}
         onPasswordReset={auth.sendPasswordReset}
+        isSupabaseConfigured={isSupabaseConfigured}
       />
     );
   }
 
-  if (hydrating || !profile) {
+  if (hydrating) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-amber-50/30 text-slate-700 flex items-center justify-center text-sm font-medium">
         Loading UPSC CSE Study Workspace…
       </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <main className="min-h-screen bg-[#f4f5f2] px-5 py-12 text-slate-900 sm:px-8">
+        <section role="alert" className="mx-auto mt-12 max-w-xl border-l-4 border-rose-600 bg-white px-6 py-6 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-rose-700">Workspace unavailable</p>
+          <h1 className="mt-2 font-serif text-2xl font-semibold">We couldn’t connect your account</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            {loadError || 'Your profile could not be loaded from Supabase. Check the project URL and database schema, then retry.'}
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setHydrating(true);
+                void hydrateWorkspace();
+              }}
+              className="rounded-md bg-[#173f39] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#21584f] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-800"
+            >
+              Retry connection
+            </button>
+            <button
+              type="button"
+              onClick={() => void auth.signOut()}
+              className="rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+            >
+              Sign out
+            </button>
+          </div>
+        </section>
+      </main>
     );
   }
 
@@ -497,8 +551,6 @@ export function App() {
         open={portalOpen}
         onClose={() => setPortalOpen(false)}
         profile={profile}
-        isCloudAuth={auth.isCloudAuth}
-        isSupabaseConfigured={isSupabaseConfigured}
         onUpdateProfile={async (patch) => {
           const updated = await repo.updateProfile(profile.uid, patch);
           setProfile(updated);
@@ -510,7 +562,6 @@ export function App() {
         onOpenAdminStudio={() => {
           setActiveTab('admin');
         }}
-        onExitSandboxToCloud={auth.exitSandboxMode}
         onSignOut={auth.signOut}
       />
 

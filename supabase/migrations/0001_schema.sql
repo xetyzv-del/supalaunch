@@ -201,6 +201,26 @@ CREATE TABLE IF NOT EXISTS public.syllabus_progress (
   UNIQUE(user_id, subtopic_id)
 );
 
+-- Preserve older lecture rows while adding ownership for new authenticated records.
+ALTER TABLE public.lecture_doubts
+  ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE public.lecture_notes
+  ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'lecture_doubts' AND column_name = 'avatar_url'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'lecture_doubts' AND column_name = 'avatar'
+  ) THEN
+    ALTER TABLE public.lecture_doubts RENAME COLUMN avatar_url TO avatar;
+  END IF;
+END;
+$$;
+
 -- ==============================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- ==============================================================================
@@ -219,22 +239,27 @@ ALTER TABLE public.topics_of_day ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.syllabus_progress ENABLE ROW LEVEL SECURITY;
 
 -- Profiles: Anyone authenticated can read; users update their own
+DROP POLICY IF EXISTS "Public profiles are viewable by all authenticated users" ON public.profiles;
 CREATE POLICY "Public profiles are viewable by all authenticated users"
   ON public.profiles FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
 CREATE POLICY "Users can update their own profile"
   ON public.profiles FOR UPDATE TO authenticated USING (auth.uid() = id);
 
 -- Broadcasts: Public read; staff manage
+DROP POLICY IF EXISTS "Broadcasts viewable by anyone" ON public.broadcast_classes;
 CREATE POLICY "Broadcasts viewable by anyone"
   ON public.broadcast_classes FOR SELECT TO authenticated, anon USING (true);
 
+DROP POLICY IF EXISTS "Faculty can insert broadcasts" ON public.broadcast_classes;
 CREATE POLICY "Faculty can insert broadcasts"
   ON public.broadcast_classes FOR INSERT TO authenticated
   WITH CHECK (
     EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'mentor'))
   );
 
+DROP POLICY IF EXISTS "Faculty can update broadcasts" ON public.broadcast_classes;
 CREATE POLICY "Faculty can update broadcasts"
   ON public.broadcast_classes FOR UPDATE TO authenticated
   USING (
@@ -242,42 +267,51 @@ CREATE POLICY "Faculty can update broadcasts"
   );
 
 -- Lecture Doubts: Public read; authenticated users post; owners update
+DROP POLICY IF EXISTS "Doubts viewable by all" ON public.lecture_doubts;
 CREATE POLICY "Doubts viewable by all"
   ON public.lecture_doubts FOR SELECT TO authenticated, anon USING (true);
 
+DROP POLICY IF EXISTS "Authenticated users can post doubts" ON public.lecture_doubts;
 CREATE POLICY "Authenticated users can post doubts"
   ON public.lecture_doubts FOR INSERT TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
 -- Lecture Notes: Private to owner
+DROP POLICY IF EXISTS "Users manage their own lecture notes" ON public.lecture_notes;
 CREATE POLICY "Users manage their own lecture notes"
   ON public.lecture_notes FOR ALL TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
 -- Quizzes & Questions: Public read
+DROP POLICY IF EXISTS "Quizzes readable by everyone" ON public.quizzes;
 CREATE POLICY "Quizzes readable by everyone"
   ON public.quizzes FOR SELECT TO authenticated, anon USING (is_published = true OR auth.uid() = created_by);
 
+DROP POLICY IF EXISTS "Questions readable by everyone" ON public.quiz_questions;
 CREATE POLICY "Questions readable by everyone"
   ON public.quiz_questions FOR SELECT TO authenticated, anon USING (true);
 
 -- Test Attempts: Private to owner
+DROP POLICY IF EXISTS "Users view and insert their own attempts" ON public.test_attempts;
 CREATE POLICY "Users view and insert their own attempts"
   ON public.test_attempts FOR ALL TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
 -- Mains Questions & Submissions
+DROP POLICY IF EXISTS "Mains questions viewable by all" ON public.mains_questions;
 CREATE POLICY "Mains questions viewable by all"
   ON public.mains_questions FOR SELECT TO authenticated, anon USING (true);
 
+DROP POLICY IF EXISTS "Users view and insert their own mains submissions" ON public.mains_submissions;
 CREATE POLICY "Users view and insert their own mains submissions"
   ON public.mains_submissions FOR ALL TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
 -- Resources: Public read approved; staff view all
+DROP POLICY IF EXISTS "Approved resources readable by all" ON public.resources;
 CREATE POLICY "Approved resources readable by all"
   ON public.resources FOR SELECT TO authenticated, anon
   USING (
@@ -287,10 +321,12 @@ CREATE POLICY "Approved resources readable by all"
   );
 
 -- Topics of the day: Public read
+DROP POLICY IF EXISTS "Topics readable by all" ON public.topics_of_day;
 CREATE POLICY "Topics readable by all"
   ON public.topics_of_day FOR SELECT TO authenticated, anon USING (true);
 
 -- Syllabus Progress: Private to owner
+DROP POLICY IF EXISTS "Users manage their syllabus progress" ON public.syllabus_progress;
 CREATE POLICY "Users manage their syllabus progress"
   ON public.syllabus_progress FOR ALL TO authenticated
   USING (auth.uid() = user_id)

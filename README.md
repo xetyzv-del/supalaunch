@@ -1,28 +1,49 @@
 # CivilEdge IAS — UPSC Civil Services Academic Platform
 
-CivilEdge IAS is a production-grade UPSC CSE preparation platform architected with dual backend support:
-1. **Option A: Supabase Cloud Connected Mode** — Complete cloud PostgreSQL database (12 relational entities), Supabase Auth sessions, Row-Level Security (RLS) policies, Cloud Storage for signed PDF handouts, and Realtime WebSocket notifications for live classroom Q&A.
-2. **Option B: Offline Local Sandbox Mode** — Zero-external-dependency local storage engine with cross-tab `BroadcastChannel` synchronization, designed for offline aspirants and rapid testing.
+CivilEdge IAS uses Supabase Auth, PostgreSQL, Row-Level Security (RLS), Storage, and Realtime for application data. Demo sign-in and seeded production records are disabled. Local seed fixtures are retained only for unit tests.
 
----
+## Supabase Configuration
 
-## 🚀 Live Preview: Option A & Option B
+1. Copy `.env.example` to `.env` and set `VITE_SUPABASE_URL` and either `VITE_SUPABASE_ANON_KEY` or `VITE_SUPABASE_PUBLISHABLE_KEY` from the Supabase project settings. These values are included in the browser bundle; never put a service-role key or other secret in a `VITE_` variable.
+2. Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` only in the server environment. They are required to authenticate and persist Mains evaluations; never expose the service-role key to the browser.
+3. Set `GEMINI_API_KEY` only in the server environment to enable AI evaluation. The route returns `503` when required server credentials are missing; it does not generate synthetic grades.
+4. Apply the SQL files in `supabase/migrations/` to the project before building.
+5. Configure Supabase Auth redirect URLs, email confirmation, OAuth providers, and production site URL in the Supabase dashboard.
+6. Provision the first staff account by assigning its `profiles.role` through the trusted Supabase SQL editor. Do not grant staff roles through user metadata or email naming.
+7. Set `TRUST_PROXY_HOPS` to the trusted proxy count for the hosting platform; leave it at `0` when serving directly.
+8. Run `npm run schema:check`, `npm test`, `npm run lint`, and `npm run build` before deployment.
 
-You can toggle between **Option A** and **Option B** at any moment in the application:
+Vite embeds Supabase values at build time. Configure them in the deployment build environment and rebuild whenever they change. `.env` is ignored by Git; do not commit real credentials.
 
-### 1. In the Workspace Sub-Toolbar
-Directly below the top header, an interactive architecture switcher is available:
-- **`[ ☁ Option A: Supabase Cloud ]`**: Activates Supabase Cloud mode with real-time session tracking, PostgreSQL storage, and authenticated cloud features.
-- **`[ 📦 Option B: Sandbox ]`**: Activates the local sandbox mode for instant offline drills.
+### Existing Supabase Projects
 
-### 2. On the Authentication Screen
-When in Option A without an existing Supabase session, the Auth Screen provides **1-Click Quick Cloud Previews**:
-- **`[ Preview as Cloud Aspirant ]`** — Launches as Kavya Sundaram (2026 Aspirant profile).
-- **`[ Preview as Cloud Faculty/Admin ]`** — Launches as Dr. Anurag Verma with full administrative access to the CSV Prelims Importer, Daily Crux Publisher, and Supabase RLS Matrix.
-- Standard authentication methods: Email & Password, One-Click Magic Link, and Google OAuth.
+Apply migrations once, in order. Do not rerun `0001_schema.sql` against a project with existing tables; `CREATE TABLE IF NOT EXISTS` does not reconcile older column layouts. For `42703: column "user_id" does not exist`, run this read-only query and use the reported table to plan a data-preserving migration:
 
-### 3. In the Aspirant Portal Drawer
-Click the student avatar in the top right to open the Aspirant Portal and toggle between Option A and Option B or customize your optional subject (PSIR, Public Administration, Geography, etc.) and target year (2026/2027/2028).
+```sql
+WITH required(table_name) AS (
+	VALUES
+		('lecture_doubts'),
+		('lecture_notes'),
+		('test_attempts'),
+		('mains_submissions'),
+		('syllabus_progress'),
+		('doubt_upvotes')
+)
+SELECT required.table_name,
+	CASE
+		WHEN t.table_name IS NULL THEN 'table missing'
+		WHEN c.column_name IS NULL THEN 'user_id missing'
+		ELSE 'ok'
+	END AS status
+FROM required
+LEFT JOIN information_schema.tables AS t
+	ON t.table_schema = 'public' AND t.table_name = required.table_name
+LEFT JOIN information_schema.columns AS c
+	ON c.table_schema = 'public'
+	AND c.table_name = required.table_name
+	AND c.column_name = 'user_id'
+ORDER BY required.table_name;
+```
 
 ---
 
@@ -43,7 +64,7 @@ Click the student avatar in the top right to open the Aspirant Portal and toggle
 ### 3. Mains Daily Answer Writing (DAW) Lab
 - Timed practice desk with real-time word counter against strict UPSC limits (150 words for 10-markers, 250 words for 15-markers).
 - Expandable 4-part structural framework blueprint: Introduction -> Analytical Dimensions -> Statutory/Data Anchors -> Way Forward.
-- Instant rubric evaluation powered by Gemini AI (with heuristic fallback) scoring answers on multidimensionality, constitutional vocabulary, and structure.
+- Authenticated rubric evaluation powered by Gemini AI, with results saved to the user's account.
 
 ### 4. Knowledge Compendium & Academic Resource Library
 - Curated NCERT essentials, standard reference synopses (Polity, Modern History, Economy, Environment), monthly Yojana digests, and PIB bulletins.
@@ -75,14 +96,11 @@ Migrations are located in `supabase/migrations/`:
 # Start full-stack development server on port 3000
 npm run dev
 
-# Run test suite (8 passing unit tests)
+# Run test suite
 npm test
 
 # Check TypeScript typing and linting
 npm run lint
-
-# Generate Supabase SQL seed from canonical UPSC data
-npm run seed:generate
 
 # Verify database schema integrity
 npm run schema:check

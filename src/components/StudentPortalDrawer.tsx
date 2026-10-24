@@ -32,15 +32,9 @@ interface StudentPortalDrawerProps {
   isOpen?: boolean;
   onClose: () => void;
   profile: UserProfileData;
-  activeMode?: 'option_a' | 'option_b';
-  isCloudAuth?: boolean;
-  isSupabaseConfigured?: boolean;
-  onSwitchMode?: (mode: 'option_a' | 'option_b') => void;
-  onExitSandboxToCloud?: () => void;
   onUpdateProfile: (patch: Partial<UserProfileData>) => Promise<void>;
   onLogMinutes?: (mins: number) => Promise<void>;
   onLogStudyMinutes?: (mins: number) => Promise<void>;
-  onSwitchSandboxRole?: (role: any) => Promise<void>;
   onSignOut: () => Promise<void>;
   onOpenAdminStudio?: () => void;
 }
@@ -50,19 +44,13 @@ export const StudentPortalDrawer: React.FC<StudentPortalDrawerProps> = ({
   isOpen,
   onClose,
   profile,
-  activeMode = 'option_b',
-  isCloudAuth,
-  onSwitchMode,
-  onExitSandboxToCloud,
   onUpdateProfile,
   onLogMinutes,
   onLogStudyMinutes,
-  onSwitchSandboxRole,
   onSignOut,
   onOpenAdminStudio,
 }) => {
   const visible = open ?? isOpen ?? false;
-  const isCloud = isCloudAuth ?? (activeMode === 'option_a');
   const [targetYear, setTargetYear] = useState<TargetYear>(profile.targetYear || '2026');
   const [optionalSubject, setOptionalSubject] = useState(
     profile.optionalSubject || 'Public Administration'

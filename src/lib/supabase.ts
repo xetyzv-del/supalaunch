@@ -8,8 +8,8 @@ const rawAnonKey = (
 export const isSupabaseConfigured =
   Boolean(rawUrl && rawAnonKey) &&
   /^https?:\/\//i.test(rawUrl) &&
-  !rawUrl.includes('your-project-ref') &&
-  !rawAnonKey.includes('your-anon-key');
+  !/your-|placeholder|example/i.test(rawUrl) &&
+  !/your-|placeholder|example/i.test(rawAnonKey);
 
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(rawUrl, rawAnonKey, {

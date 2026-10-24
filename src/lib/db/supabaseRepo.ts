@@ -6,8 +6,6 @@ import {
   normalizeProfile,
 } from '../format';
 import { getAccessToken, isSupabaseConfigured, supabase } from '../supabase';
-import { isAdminEmail } from '../../hooks/useAuth';
-import { localRepo } from './localRepo';
 import type {
   AdminAuditEntry,
   BroadcastClass,
@@ -61,6 +59,12 @@ function client(): SupabaseClient | null {
   return isSupabaseConfigured ? supabase : null;
 }
 
+const localRepo = new Proxy({} as DataRepo, {
+  get: () => () => {
+    throw new Error('No local data fallback is available. Check Supabase configuration, connectivity, and schema migrations.');
+  },
+});
+
 function makeSlugId(prefix: string): string {
   const uid =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -89,11 +93,8 @@ export const supabaseRepo: DataRepo = {
       .maybeSingle();
 
     if (error) throw new Error(error.message);
-    const isAdmin = isAdminEmail(user.email) || user.role === 'admin';
     if (data) {
-      const mapped = normalizeProfile(fromRow(profileSpec, data as Record<string, any>));
-      if (isAdmin) mapped.role = 'admin';
-      return mapped;
+      return normalizeProfile(fromRow(profileSpec, data as Record<string, any>));
     }
 
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -104,14 +105,10 @@ export const supabaseRepo: DataRepo = {
       .maybeSingle();
 
     if (retryData) {
-      const mapped = normalizeProfile(fromRow(profileSpec, retryData as Record<string, any>));
-      if (isAdmin) mapped.role = 'admin';
-      return mapped;
+      return normalizeProfile(fromRow(profileSpec, retryData as Record<string, any>));
     }
 
-    const fallback = await localRepo.getProfile(user);
-    if (isAdmin) fallback.role = 'admin';
-    return fallback;
+    throw new Error('Your Supabase profile was not created. Contact support before continuing.');
   },
 
   async updateProfile(uid, patch: ProfilePatch) {

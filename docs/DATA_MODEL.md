@@ -1,29 +1,29 @@
 # CivilEdge IAS — Architecture & Data Model Documentation
 
-## 1. System Overview
-CivilEdge IAS is an institutional-grade UPSC Civil Services Examination preparation application with dual-mode architecture:
-- **Option A (Supabase Cloud Connected)**: Full cloud sync with PostgreSQL 15, Supabase Auth (Email/Password, Magic Link, Google OAuth), Row Level Security, Cloud Storage for handouts/PDFs, and Realtime WebSocket updates for live doubt queries.
-- **Option B (Offline Local Sandbox)**: Instant zero-latency offline environment using browser local storage with cross-tab BroadcastChannel sync for offline aspirants.
+## System Overview
+The production application uses Supabase Auth, PostgreSQL, Row-Level Security (RLS), private Storage buckets, and Realtime. Demo authentication and seeded production records are disabled. Local seed data is retained only for tests and is excluded from the browser bundle.
 
-## 2. Relational Schema & RLS Matrix
+## Relational Schema & RLS Matrix
 
-| Entity | Table | RLS Policy | Realtime | Description |
-|---|---|---|---|---|
-| User Profile | `profiles` | Public Read / Self Update | Yes | Aspirant target parameters, streaks & study minutes |
-| Broadcast Class | `broadcast_classes` | Public Read / Faculty Write | Yes | Studio Seminars (YouTube, Zoom, Google Meet, Vimeo) |
-| Lecture Doubt | `lecture_doubts` | Public Read / User Insert | Yes | Live lecture Q&A with upvoting |
-| Lecture Note | `lecture_notes` | Private to Owner | No | Timestamped study notes during classes |
-| Quiz Question | `quiz_questions` | Public Read / Admin Write | No | Bilingual (+2.0 / -0.66) prelims questions |
-| Quiz | `quizzes` | Public Read / Admin Write | No | Prelims Full Mocks and Topic Quizzes |
-| Test Attempt | `test_attempts` | Private to Owner | No | Scorecards, percentile rank & diagnostic breakdowns |
-| Mains Question | `mains_questions` | Public Read / Admin Write | No | Daily Answer Writing (10/15 marker) questions |
-| Mains Submission | `mains_submissions` | Private to Owner | No | Aspirant submissions with AI/Rubric evaluation |
-| Resource Compendium | `resources` | Approved Public Read | Yes | NCERT, standard books & PIB summaries |
-| Topic of the Day | `topics_of_day` | Public Read | No | Curated editorial crux & statutory anchor matrix |
-| Micro-Syllabus | `syllabus_progress` | Private to Owner | No | Granular topic coverage across GS-1 through GS-4 |
+| Entity | Table | Access policy | Description |
+|---|---|---|---|
+| User Profile | `profiles` | Self read/update; staff read; role changes via staff RPC | Aspirant settings and study totals |
+| Broadcast Class | `broadcast_classes` | Authenticated read; staff write | Live classes and schedules |
+| Lecture Doubt | `lecture_doubts` | Authenticated read; owner insert; staff moderation | Live classroom questions |
+| Doubt Upvote | `doubt_upvotes` | Authenticated read; owner writes own vote | Per-user lecture question votes |
+| Lecture Note | `lecture_notes` | Owner only | Timestamped study notes |
+| Quiz | `quizzes` | Published quizzes; staff manage | Prelims tests and drills |
+| Quiz Question | `quiz_questions` | Authenticated published quiz access; staff manage | Bilingual question bank |
+| Quiz Link | `quiz_question_links` | Published quizzes; staff manage | Ordered quiz-question relation |
+| Test Attempt | `test_attempts` | Owner only | Student scorecards and diagnostics |
+| Mains Question | `mains_questions` | Authenticated read; staff manage | Answer-writing prompts |
+| Mains Submission | `mains_submissions` | Owner read/insert; server evaluates and updates | Student answers and persisted AI result |
+| Resource | `resources` | Authenticated approved content; staff manage | Academic materials |
+| Topic of Day | `topics_of_day` | Authenticated read; staff manage | Curated editorial content |
+| Syllabus Paper | `syllabus_papers` | Authenticated read; staff manage | Syllabus sections |
+| Syllabus Subtopic | `syllabus_subtopics` | Authenticated read; staff manage | Ordered syllabus topics |
+| Syllabus Progress | `syllabus_progress` | Owner only | Per-user completion state |
+| Admin Audit | `admin_audit_log` | Staff read; server-side writes | Administrative role-change record |
 
-## 3. Option A vs Option B Mode Switching
-Users can switch between Option A and Option B seamlessly:
-1. In the top sub-toolbar: 1-click switcher toggles live cloud and offline sandbox.
-2. In the Aspirant Portal drawer: Backend architecture selector.
-3. On the Auth Screen: 1-click cloud preview as Aspirant or Faculty/Admin without requiring pre-existing Supabase credentials.
+## Storage and Privileged Operations
+Storage buckets are private. Authenticated reads and owner/staff upload policies apply to resources, briefs, handouts, and avatars. Staff roles are stored in `profiles.role`; user metadata and email naming do not grant privileges. Provision the first staff user through the trusted Supabase SQL editor. Mains evaluation verifies the Supabase session and submission owner, then persists results using a server-only service-role key.

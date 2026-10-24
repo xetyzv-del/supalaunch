@@ -1,6 +1,5 @@
 import { buildSeed } from '../../data/seed';
 import { SEED_INFOGRAPHICS } from '../../data/infographics';
-import { isAdminEmail } from '../../hooks/useAuth';
 import { deleteBlob, getBlob, storeBlob } from './blobStore';
 import {
   buildResourceSynopsisMarkdown,
@@ -167,12 +166,6 @@ function sanitizeStore(store: SandboxStore): SandboxStore {
   // Guarantee admin accounts have admin role
   if (!store.profiles) store.profiles = {};
   for (const prof of Object.values(store.profiles)) {
-    if (isAdminEmail(prof.email)) {
-      if (prof.role !== 'admin') {
-        prof.role = 'admin';
-        changed = true;
-      }
-    }
   }
   // Backfill seed infographics if topic lacks infographics
   if (store.topics) {
@@ -305,7 +298,7 @@ export const localRepo: DataRepo = {
 
   async getProfile(user) {
     const store = readStore();
-    const isAdmin = isAdminEmail(user.email) || user.role === 'admin';
+    const isAdmin = user.role === 'admin';
     const existing = store.profiles[user.id];
     if (existing) {
       if (isAdmin && existing.role !== 'admin') {
